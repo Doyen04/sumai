@@ -10,7 +10,7 @@ export function Header({ className }: HeaderProps) {
     return (
         <header
             className={cn(
-                'h-16 bg-white border-b border-border',
+                'h-16 bg-background border-b border-border',
                 'flex items-center justify-between px-6',
                 className
             )}

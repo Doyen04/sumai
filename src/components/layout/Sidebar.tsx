@@ -6,11 +6,9 @@ import {
     HelpCircle,
     ChevronLeft,
     ChevronRight,
-    Moon,
-    Sun,
 } from 'lucide-react';
 import { cn } from '@/utils';
-import { Button } from '@/components/ui';
+import { Button, Switch } from '@/components/ui';
 import { useTheme } from '@/contexts';
 
 interface SidebarProps {
@@ -81,26 +79,24 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             </nav>
 
             {/* Dark Mode Toggle */}
-            <div className="p-2 border-t border-border">
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={toggleTheme}
-                    className={cn('w-full', isCollapsed ? 'justify-center' : 'justify-start')}
-                    title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-                >
-                    {theme === 'dark' ? (
-                        <>
-                            <Sun className="w-5 h-5" />
-                            {!isCollapsed && <span className="ml-2">Light Mode</span>}
-                        </>
-                    ) : (
-                        <>
-                            <Moon className="w-5 h-5" />
-                            {!isCollapsed && <span className="ml-2">Dark Mode</span>}
-                        </>
-                    )}
-                </Button>
+            <div className={cn(
+                'p-3 border-t border-border',
+                isCollapsed ? 'flex justify-center' : ''
+            )}>
+                {isCollapsed ? (
+                    <Switch
+                        checked={theme === 'dark'}
+                        onChange={toggleTheme}
+                        size="sm"
+                    />
+                ) : (
+                    <Switch
+                        checked={theme === 'dark'}
+                        onChange={toggleTheme}
+                        label="Dark Mode"
+                        size="sm"
+                    />
+                )}
             </div>
 
             {/* Collapse Button */}
