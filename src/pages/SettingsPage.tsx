@@ -14,14 +14,17 @@ import {
     ConfirmModal,
 } from '@/components/ui';
 import { SUMMARY_LENGTH_OPTIONS, EXPORT_FORMAT_OPTIONS, TEXT_SIZE_OPTIONS, LINE_SPACING_OPTIONS } from '@/constants';
+import { useTheme } from '@/contexts';
 import type { UserSettings, SummaryLength, ExportFormat } from '@/types';
 
 export function SettingsPage() {
+    const { theme, setTheme } = useTheme();
+
     const [settings, setSettings] = useState<UserSettings>({
         defaultSummaryLength: 'balanced',
         defaultExportFormat: 'pdf',
         highlightIntensity: 70,
-        theme: 'light',
+        theme: theme,
         textSize: 'medium',
         lineSpacing: 'normal',
     });
@@ -158,10 +161,12 @@ export function SettingsPage() {
 
                     <div className="pt-2">
                         <Switch
-                            checked={settings.theme === 'dark'}
-                            onChange={(checked) =>
-                                updateSetting('theme', checked ? 'dark' : 'light')
-                            }
+                            checked={theme === 'dark'}
+                            onChange={(checked) => {
+                                const newTheme = checked ? 'dark' : 'light';
+                                setTheme(newTheme);
+                                updateSetting('theme', newTheme);
+                            }}
                             label="Dark Mode"
                             description="Use dark theme for reduced eye strain"
                         />

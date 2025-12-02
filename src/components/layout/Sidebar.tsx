@@ -6,9 +6,12 @@ import {
     HelpCircle,
     ChevronLeft,
     ChevronRight,
+    Moon,
+    Sun,
 } from 'lucide-react';
 import { cn } from '@/utils';
 import { Button } from '@/components/ui';
+import { useTheme } from '@/contexts';
 
 interface SidebarProps {
     isCollapsed: boolean;
@@ -23,10 +26,12 @@ const navItems = [
 ];
 
 export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
+    const { theme, toggleTheme } = useTheme();
+
     return (
         <aside
             className={cn(
-                'fixed left-0 top-0 h-screen bg-white border-r border-border',
+                'fixed left-0 top-0 h-screen bg-background border-r border-border',
                 'flex flex-col transition-all duration-300 z-40',
                 isCollapsed ? 'w-16' : 'w-60'
             )}
@@ -74,6 +79,29 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                     })}
                 </ul>
             </nav>
+
+            {/* Dark Mode Toggle */}
+            <div className="p-2 border-t border-border">
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={toggleTheme}
+                    className={cn('w-full', isCollapsed ? 'justify-center' : 'justify-start')}
+                    title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+                >
+                    {theme === 'dark' ? (
+                        <>
+                            <Sun className="w-5 h-5" />
+                            {!isCollapsed && <span className="ml-2">Light Mode</span>}
+                        </>
+                    ) : (
+                        <>
+                            <Moon className="w-5 h-5" />
+                            {!isCollapsed && <span className="ml-2">Dark Mode</span>}
+                        </>
+                    )}
+                </Button>
+            </div>
 
             {/* Collapse Button */}
             <div className="p-2 border-t border-border">
