@@ -37,8 +37,8 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
             {/* Logo */}
             <div className="h-16 flex items-center px-4 border-b border-border">
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-accent rounded-lg flex items-center justify-center">
-                        <FileText className="w-5 h-5 text-white" />
+                    <div className="w-7 h-7 bg-accent rounded-sm flex items-center justify-center">
+                        <img src="/sumai.svg" alt="SumAI Logo" className="w-6 h-6" />
                     </div>
                     {!isCollapsed && (
                         <span className="text-lg font-semibold text-foreground">

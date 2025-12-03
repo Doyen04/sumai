@@ -21,7 +21,7 @@ export function DocumentHistory({
     onDocumentDelete,
     className,
 }: DocumentHistoryProps) {
-    const layoutClasses = viewMode === 'grid' 
+    const layoutClasses = viewMode === 'grid'
         ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3'
         : 'flex flex-col gap-3';
 
