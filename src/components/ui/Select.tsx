@@ -49,7 +49,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
                         id={selectId}
                         className={cn(
                             'w-full h-10 px-3 pr-10 text-sm appearance-none',
-                            'bg-white text-foreground',
+                            'bg-background text-foreground',
                             'border border-border rounded-md',
                             'transition-colors duration-150',
                             'hover:border-border-hover',

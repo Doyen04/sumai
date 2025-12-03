@@ -48,7 +48,7 @@ export function SummaryControls({
     return (
         <div
             className={cn(
-                'flex flex-wrap items-center gap-3 p-4 bg-white border-t border-border',
+                'flex flex-wrap items-center gap-3 p-4 bg-background border-t border-border',
                 className
             )}
         >
@@ -64,7 +64,7 @@ export function SummaryControls({
                                     'px-3 py-1.5 text-sm font-medium transition-colors',
                                     summaryLength === option.value
                                         ? 'bg-accent text-white'
-                                        : 'bg-white text-muted hover:bg-surface-hover'
+                                        : 'bg-background text-muted hover:bg-surface-hover'
                                 )}
                             >
                                 {option.label}
@@ -88,7 +88,7 @@ export function SummaryControls({
                                         'px-2.5 py-1.5 transition-colors',
                                         highlightVisibility === option.value
                                             ? 'bg-accent text-white'
-                                            : 'bg-white text-muted hover:bg-surface-hover'
+                                            : 'bg-background text-muted hover:bg-surface-hover'
                                     )}
                                 >
                                     <Icon className="w-4 h-4" />
@@ -140,7 +140,7 @@ export function SummaryControls({
                                 className="fixed inset-0 z-10"
                                 onClick={() => setShowExportMenu(false)}
                             />
-                            <div className="absolute right-0 bottom-full mb-2 w-40 bg-white border border-border rounded-lg shadow-lg z-20 py-1">
+                            <div className="absolute right-0 bottom-full mb-2 w-40 bg-background border border-border rounded-lg shadow-lg z-20 py-1">
                                 <button
                                     onClick={() => {
                                         onExport('pdf');

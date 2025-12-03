@@ -40,7 +40,7 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         active:bg-accent-hover
       `,
             secondary: `
-        bg-white text-foreground
+        bg-background text-foreground
         border border-border
         hover:bg-surface-hover hover:border-border-hover
         active:bg-surface

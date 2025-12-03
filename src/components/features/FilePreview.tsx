@@ -35,7 +35,7 @@ export function FilePreview({
     return (
         <div
             className={cn(
-                'flex items-center gap-4 p-4 bg-white border border-border rounded-lg',
+                'flex items-center gap-4 p-4 bg-background border border-border rounded-lg',
                 hasError && 'border-error bg-error-light',
                 className
             )}

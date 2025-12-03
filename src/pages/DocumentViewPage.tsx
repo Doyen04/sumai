@@ -185,7 +185,7 @@ export function DocumentViewPage() {
             {/* Main Content - Split View */}
             <div className="flex-1 flex gap-4 min-h-0">
                 {/* Document Viewer (Left Panel) */}
-                <div className="flex-1 bg-white border border-border rounded-lg overflow-hidden">
+                <div className="flex-1 bg-background border border-border rounded-lg overflow-hidden">
                     <DocumentViewer
                         ref={leftPanelRef}
                         content={MOCK_CONTENT}
@@ -199,7 +199,7 @@ export function DocumentViewPage() {
                 </div>
 
                 {/* Summary Panel (Right Panel) */}
-                <div className="w-[400px] xl:w-[480px] bg-white border border-border rounded-lg overflow-hidden flex flex-col">
+                <div className="w-[400px] xl:w-[480px] bg-background border border-border rounded-lg overflow-hidden flex flex-col">
                     <SummaryPanel
                         ref={rightPanelRef}
                         summary={summary}

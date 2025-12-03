@@ -168,7 +168,7 @@ export const SummaryPanel = forwardRef<HTMLDivElement, SummaryPanelProps>(
                 className={cn('h-full overflow-auto', className)}
             >
                 {/* Header */}
-                <div className="sticky top-0 bg-white border-b border-border p-4 z-10">
+                <div className="sticky top-0 bg-background border-b border-border p-4 z-10">
                     <h2 className="text-lg font-semibold text-foreground">Summary</h2>
                     <p className="text-sm text-muted mt-0.5">
                         {summary.content.length} sections • {summary.length} length

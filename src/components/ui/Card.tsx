@@ -15,8 +15,8 @@ export function Card({
     const baseStyles = 'rounded-lg transition-shadow duration-150';
 
     const variants = {
-        default: 'bg-white border border-border',
-        elevated: 'bg-white shadow-md',
+        default: 'bg-background border border-border',
+        elevated: 'bg-background shadow-md',
         outlined: 'bg-transparent border border-border',
     };
 

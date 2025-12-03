@@ -57,7 +57,7 @@ export function Skeleton({
 // Skeleton for document cards
 export function DocumentCardSkeleton() {
     return (
-        <div className="p-4 bg-white border border-border rounded-lg">
+        <div className="p-4 bg-background border border-border rounded-lg">
             <div className="flex items-start gap-3">
                 <Skeleton variant="rectangular" width={40} height={40} />
                 <div className="flex-1 space-y-2">

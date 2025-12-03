@@ -80,7 +80,7 @@ export const DocumentViewer = forwardRef<HTMLDivElement, DocumentViewerProps>(
         return (
             <div className={cn('flex flex-col h-full', className)}>
                 {/* Toolbar */}
-                <div className="flex items-center gap-2 p-3 border-b border-border bg-white">
+                <div className="flex items-center gap-2 p-3 border-b border-border bg-background">
                     <Input
                         placeholder="Search in document..."
                         leftElement={<Search className="w-4 h-4" />}
@@ -100,7 +100,7 @@ export const DocumentViewer = forwardRef<HTMLDivElement, DocumentViewerProps>(
                 {/* Document Content */}
                 <div
                     ref={ref}
-                    className="flex-1 overflow-auto p-6 bg-white"
+                    className="flex-1 overflow-auto p-6 bg-background"
                 >
                     {renderContent()}
                 </div>

@@ -91,7 +91,7 @@ export function Modal({
                 aria-describedby={description ? 'modal-description' : undefined}
                 tabIndex={-1}
                 className={cn(
-                    'relative w-full bg-white rounded-lg shadow-xl',
+                    'relative w-full bg-background rounded-lg shadow-xl',
                     'animate-in fade-in-0 zoom-in-95 duration-200',
                     sizes[size]
                 )}
