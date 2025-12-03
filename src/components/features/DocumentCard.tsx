@@ -77,39 +77,39 @@ export function DocumentCard({
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-7 w-7 p-0"
+                                    className="h-9 w-9 p-0"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         onClick?.();
                                     }}
                                 >
-                                    <Eye className="w-4 h-4" />
+                                    <Eye className="w-9 h-9" />
                                 </Button>
                             </Tooltip>
                             <Tooltip content="Download">
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-7 w-7 p-0"
+                                    className="h-9 w-9 p-0"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         onDownload?.();
                                     }}
                                 >
-                                    <Download className="w-4 h-4" />
+                                    <Download className="w-9 h-9" />
                                 </Button>
                             </Tooltip>
                             <Tooltip content="Delete">
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="h-7 w-7 p-0 text-error hover:bg-error-light"
+                                    className="h-9 w-9 p-0 text-error hover:bg-error-light"
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         onDelete?.();
                                     }}
                                 >
-                                    <Trash2 className="w-4 h-4" />
+                                    <Trash2 className="w-9 h-9" />
                                 </Button>
                             </Tooltip>
                         </div>
