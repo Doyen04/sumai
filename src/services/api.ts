@@ -1,136 +1,76 @@
-import type { Document, Summary, UserSettings, ExportFormat } from '@/types';
-
+import type { Document, Summary, UserSettings, ExportFormat, SummaryLength } from '@/types';
+import { extractTextFromFile, generateSummaryWithGemini } from './gemini';
 
 // Simulated API delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// In-memory document storage (in production, this would be a database)
+const documentStore = new Map<string, { document: Document; content: string }>();
 
 /**
  * Upload a document to the server
  */
 export async function uploadDocument(file: File): Promise<Document> {
-    // Simulate upload delay
-    await delay(1500);
+    try {
+        // Extract text from the file
+        const content = await extractTextFromFile(file);
 
-    // In production, this would make an API call
-    return {
-        id: `doc_${Date.now()}`,
-        name: file.name,
-        type: file.name.split('.').pop() as Document['type'],
-        size: file.size,
-        pageCount: Math.ceil(file.size / 3000),
-        uploadedAt: new Date(),
-        status: 'completed',
-    };
+        // Estimate page count based on content length (roughly 3000 chars per page)
+        const estimatedPages = Math.max(1, Math.ceil(content.length / 3000));
+
+        const document: Document = {
+            id: `doc_${Date.now()}`,
+            name: file.name,
+            type: file.name.split('.').pop()?.toLowerCase() as Document['type'],
+            size: file.size,
+            pageCount: estimatedPages,
+            uploadedAt: new Date(),
+            status: 'completed',
+            content: content,
+        };
+
+        // Store document in memory
+        documentStore.set(document.id, { document, content });
+
+        return document;
+    } catch (error) {
+        console.error('Error uploading document:', error);
+        throw error;
+    }
 }
 
 /**
- * Generate summary for a document
+ * Get document content by ID
+ */
+export function getDocumentContent(documentId: string): string | null {
+    const stored = documentStore.get(documentId);
+    return stored?.content ?? null;
+}
+
+/**
+ * Generate summary for a document using Gemini API
  */
 export async function generateSummary(
     documentId: string,
-    length: 'short' | 'balanced' | 'detailed' = 'balanced'
+    length: SummaryLength = 'balanced'
 ): Promise<Summary> {
-    // Simulate processing delay
-    await delay(2000);
+    // Get the document content
+    const content = getDocumentContent(documentId);
 
-    // Mock summary data
-    return {
-        id: `sum_${Date.now()}`,
-        documentId,
-        length,
-        generatedAt: new Date(),
-        content: [
-            {
-                id: 's1',
-                type: 'heading',
-                content: 'Executive Summary',
-                confidence: 'high',
-            },
-            {
-                id: 's2',
-                type: 'key-concept',
-                content: 'This document outlines the key strategies for digital transformation in enterprise environments.',
-                highlightId: 'h1',
-                confidence: 'high',
-            },
-            {
-                id: 's3',
-                type: 'heading',
-                content: 'Key Findings',
-                confidence: 'high',
-            },
-            {
-                id: 's4',
-                type: 'bullet',
-                content: 'Organizations that prioritize digital transformation see 23% higher revenue growth.',
-                highlightId: 'h2',
-                confidence: 'high',
-            },
-            {
-                id: 's5',
-                type: 'bullet',
-                content: 'Cloud adoption remains the primary driver of transformation initiatives.',
-                highlightId: 'h3',
-                confidence: 'medium',
-            },
-            {
-                id: 's6',
-                type: 'bullet',
-                content: 'Employee training and change management are critical success factors.',
-                highlightId: 'h4',
-                confidence: 'medium',
-            },
-            {
-                id: 's7',
-                type: 'paragraph',
-                content: 'The research indicates that successful digital transformation requires a holistic approach combining technology, process improvement, and cultural change.',
-                highlightId: 'h5',
-                confidence: 'high',
-            },
-        ],
-        highlights: [
-            {
-                id: 'h1',
-                summaryLineId: 's2',
-                documentParagraphId: 'p-0',
-                colorIndex: 1,
-                sourceText: 'Digital transformation strategies...',
-                sourceLocation: { page: 1, paragraph: 1, startOffset: 0, endOffset: 150 },
-            },
-            {
-                id: 'h2',
-                summaryLineId: 's4',
-                documentParagraphId: 'p-2',
-                colorIndex: 2,
-                sourceText: 'Revenue growth statistics...',
-                sourceLocation: { page: 2, paragraph: 3, startOffset: 0, endOffset: 200 },
-            },
-            {
-                id: 'h3',
-                summaryLineId: 's5',
-                documentParagraphId: 'p-4',
-                colorIndex: 3,
-                sourceText: 'Cloud adoption trends...',
-                sourceLocation: { page: 3, paragraph: 1, startOffset: 0, endOffset: 175 },
-            },
-            {
-                id: 'h4',
-                summaryLineId: 's6',
-                documentParagraphId: 'p-5',
-                colorIndex: 4,
-                sourceText: 'Training requirements...',
-                sourceLocation: { page: 4, paragraph: 2, startOffset: 0, endOffset: 180 },
-            },
-            {
-                id: 'h5',
-                summaryLineId: 's7',
-                documentParagraphId: 'p-7',
-                colorIndex: 5,
-                sourceText: 'Holistic approach details...',
-                sourceLocation: { page: 5, paragraph: 1, startOffset: 0, endOffset: 220 },
-            },
-        ],
-    };
+    if (!content) {
+        throw new Error(`Document ${documentId} not found or has no content`);
+    }
+
+    // Generate summary using Gemini
+    const summary = await generateSummaryWithGemini(content, documentId, length);
+
+    // Update the stored document with the summary
+    const stored = documentStore.get(documentId);
+    if (stored) {
+        stored.document.summary = summary;
+    }
+
+    return summary;
 }
 
 /**
@@ -183,45 +123,33 @@ export async function updateSettings(settings: Partial<UserSettings>): Promise<U
  * Delete a document
  */
 export async function deleteDocument(documentId: string): Promise<void> {
-    await delay(500);
-    // In production, this would delete from the server
-    console.debug('Delete document:', documentId);
+    await delay(100);
+    documentStore.delete(documentId);
+}
+
+/**
+ * Get a document by ID
+ */
+export async function getDocument(documentId: string): Promise<Document | null> {
+    await delay(50);
+    const stored = documentStore.get(documentId);
+    return stored?.document ?? null;
 }
 
 /**
  * Get all documents
  */
 export async function getDocuments(): Promise<Document[]> {
-    await delay(500);
+    await delay(100);
 
-    // Return mock data
-    return [
-        {
-            id: 'doc_1',
-            name: 'Q4 Financial Report.pdf',
-            type: 'pdf',
-            size: 2456789,
-            pageCount: 24,
-            uploadedAt: new Date(Date.now() - 1000 * 60 * 60 * 2),
-            status: 'completed',
-        },
-        {
-            id: 'doc_2',
-            name: 'Product Strategy 2024.docx',
-            type: 'docx',
-            size: 1234567,
-            pageCount: 15,
-            uploadedAt: new Date(Date.now() - 1000 * 60 * 60 * 24),
-            status: 'completed',
-        },
-        {
-            id: 'doc_3',
-            name: 'Meeting Notes.txt',
-            type: 'txt',
-            size: 45678,
-            pageCount: 3,
-            uploadedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3),
-            status: 'completed',
-        },
-    ];
+    // Return documents from the store
+    const documents: Document[] = [];
+    documentStore.forEach(({ document }) => {
+        documents.push(document);
+    });
+
+    // Sort by upload date (newest first)
+    documents.sort((a, b) => new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime());
+
+    return documents;
 }

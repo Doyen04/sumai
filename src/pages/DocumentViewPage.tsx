@@ -2,58 +2,22 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 
-import { Button, Alert } from '@/components/ui';
+import { Button, Alert, Spinner } from '@/components/ui';
 import {
     DocumentViewer,
     SummaryPanel,
     SummaryControls,
 } from '@/components/features';
 import { useHighlight, useScrollSync } from '@/hooks';
-import { generateSummary } from '@/services';
+import { generateSummary, getDocument } from '@/services';
 import type { Document, Summary, SummaryLength, HighlightVisibility, ExportFormat } from '@/types';
-
-// Mock document content
-const MOCK_CONTENT = `Digital Transformation: A Strategic Imperative
-
-In today's rapidly evolving business landscape, digital transformation has become more than just a buzzword—it's a strategic imperative for organizations seeking to remain competitive and relevant. This comprehensive guide explores the key drivers, challenges, and best practices for successful digital transformation initiatives.
-
-Understanding Digital Transformation
-
-Digital transformation refers to the integration of digital technology into all areas of a business, fundamentally changing how organizations operate and deliver value to customers. It's not merely about adopting new technologies; it's about reimagining business processes, culture, and customer experiences in the digital age.
-
-The business case for digital transformation is compelling. Organizations that prioritize digital transformation see 23% higher revenue growth compared to their peers. This growth stems from improved operational efficiency, enhanced customer experiences, and the ability to tap into new revenue streams.
-
-Key Drivers of Transformation
-
-Cloud adoption remains the primary driver of transformation initiatives. The scalability, flexibility, and cost-effectiveness of cloud solutions enable organizations to innovate faster and respond to market changes with agility. Cloud platforms also facilitate collaboration and data sharing across organizational boundaries.
-
-Data analytics and artificial intelligence are transforming decision-making processes. By leveraging advanced analytics, organizations can gain deeper insights into customer behavior, optimize operations, and predict market trends with greater accuracy.
-
-Employee training and change management are critical success factors. Technology alone cannot drive transformation; people must embrace new ways of working. Organizations that invest in comprehensive training programs and foster a culture of continuous learning are more likely to succeed.
-
-Implementation Best Practices
-
-The research indicates that successful digital transformation requires a holistic approach combining technology, process improvement, and cultural change. Organizations should start with a clear vision and strategy, aligned with business objectives and customer needs.
-
-Executive sponsorship is essential for overcoming resistance and ensuring adequate resource allocation. Leaders must champion the transformation effort and model the behaviors they expect from others.
-
-An iterative, agile approach allows organizations to test ideas quickly, learn from failures, and scale successful initiatives. This reduces risk and enables faster time-to-value compared to traditional waterfall methodologies.
-
-Measuring Success
-
-Key performance indicators should be established at the outset to track progress and demonstrate value. These metrics should encompass both operational improvements and business outcomes, such as revenue growth, customer satisfaction, and employee engagement.
-
-Regular reviews and adjustments ensure the transformation stays on track and adapts to changing circumstances. Continuous improvement should be embedded in the organizational DNA.
-
-Conclusion
-
-Digital transformation is not a destination but a journey. Organizations that embrace this reality and commit to ongoing evolution will be best positioned to thrive in the digital economy. The time to act is now—those who delay risk being left behind.`;
 
 export function DocumentViewPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
 
     const [document, setDocument] = useState<Document | null>(null);
+    const [isLoadingDocument, setIsLoadingDocument] = useState(true);
     const [summary, setSummary] = useState<Summary | null>(null);
     const [isLoadingSummary, setIsLoadingSummary] = useState(false);
     const [summaryLength, setSummaryLength] = useState<SummaryLength>('balanced');
@@ -74,36 +38,52 @@ export function DocumentViewPage() {
 
     const { leftPanelRef, rightPanelRef, scrollToElement } = useScrollSync();
 
+    // Load document on mount
+    useEffect(() => {
+        const loadDocument = async () => {
+            if (!id) return;
+
+            try {
+                setIsLoadingDocument(true);
+                const doc = await getDocument(id);
+                if (doc) {
+                    setDocument(doc);
+                } else {
+                    setError('Document not found. It may have been deleted or the session expired.');
+                }
+            } catch (err) {
+                console.error('Failed to load document:', err);
+                setError('Failed to load document.');
+            } finally {
+                setIsLoadingDocument(false);
+            }
+        };
+
+        loadDocument();
+    }, [id]);
+
     const handleGenerateSummary = useCallback(async () => {
-        if (!id) return;
+        if (!id || !document?.content) return;
 
         try {
             setIsLoadingSummary(true);
             setError(null);
             const result = await generateSummary(id, summaryLength);
             setSummary(result);
-        } catch {
-            setError('Failed to generate summary. Please try again.');
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : 'Failed to generate summary';
+            setError(errorMessage);
         } finally {
             setIsLoadingSummary(false);
         }
-    }, [id, summaryLength]);
+    }, [id, summaryLength, document?.content]);
 
+    // Auto-generate summary when document is loaded
     useEffect(() => {
-        // Mock loading document
-        setDocument({
-            id: id || 'doc_1',
-            name: 'Digital Transformation Guide.pdf',
-            type: 'pdf',
-            size: 2456789,
-            pageCount: 12,
-            uploadedAt: new Date(),
-            status: 'completed',
-        });
-
-        // Auto-generate summary
-        handleGenerateSummary();
-    }, [id, handleGenerateSummary]);
+        if (document?.content && !summary) {
+            handleGenerateSummary();
+        }
+    }, [document?.content, summary, handleGenerateSummary]);
 
     const handleRegenerate = async () => {
         try {
@@ -156,6 +136,36 @@ export function DocumentViewPage() {
         }
     };
 
+    // Loading state
+    if (isLoadingDocument) {
+        return (
+            <div className="h-[calc(100vh-7rem)] flex items-center justify-center">
+                <div className="text-center">
+                    <Spinner size="lg" className="mx-auto mb-4" />
+                    <p className="text-muted">Loading document...</p>
+                </div>
+            </div>
+        );
+    }
+
+    // Document not found
+    if (!document) {
+        return (
+            <div className="h-[calc(100vh-7rem)] flex flex-col items-center justify-center">
+                <div className="text-center max-w-md">
+                    <h2 className="text-xl font-semibold text-foreground mb-2">Document Not Found</h2>
+                    <p className="text-muted mb-6">
+                        The document you're looking for doesn't exist or has been removed.
+                        Please upload a new document to get started.
+                    </p>
+                    <Button onClick={() => navigate('/')}>
+                        Go to Dashboard
+                    </Button>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="h-[calc(100vh-7rem)] flex flex-col">
             {/* Header */}
@@ -170,7 +180,7 @@ export function DocumentViewPage() {
                 </Button>
                 <div className="flex-1 min-w-0">
                     <h1 className="text-lg font-semibold text-foreground truncate">
-                        {document?.name || 'Loading...'}
+                        {document.name}
                     </h1>
                 </div>
             </div>
@@ -188,7 +198,7 @@ export function DocumentViewPage() {
                 <div className="flex-1 bg-background border border-border rounded-lg overflow-hidden">
                     <DocumentViewer
                         ref={leftPanelRef}
-                        content={MOCK_CONTENT}
+                        content={document.content || ''}
                         highlights={highlightVisibility !== 'none' ? filteredHighlights : []}
                         activeHighlightId={activeHighlightId}
                         hoveredHighlightId={hoveredHighlightId}

@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
-import type { UploadState, Document, DocumentType } from '@/types';
-import { validateFile, generateFileId, getDocumentType } from '@/utils';
+import type { UploadState, Document } from '@/types';
+import { validateFile } from '@/utils';
+import { uploadDocument } from '@/services/api';
 
 interface UseFileUploadOptions {
     onUploadComplete?: (document: Document) => void;
@@ -60,35 +61,26 @@ export function useFileUpload(options: UseFileUploadOptions = {}) {
             progress: 0,
         }));
 
-        // Simulate upload progress
         abortControllerRef.current = new AbortController();
 
         try {
-            // Simulated upload with progress
-            for (let i = 0; i <= 100; i += 10) {
-                if (abortControllerRef.current.signal.aborted) {
-                    throw new Error('Upload cancelled');
-                }
-                await new Promise(resolve => setTimeout(resolve, 100));
-                setState(prev => ({ ...prev, progress: i }));
-            }
+            // Show initial progress
+            setState(prev => ({ ...prev, progress: 10 }));
 
-            // Create document object
-            const document: Document = {
-                id: generateFileId(),
-                name: file.name,
-                type: getDocumentType(file.name) as DocumentType,
-                size: file.size,
-                pageCount: Math.ceil(file.size / 3000), // Rough estimate
-                uploadedAt: new Date(),
-                status: 'completed',
-            };
+            // Upload and extract text from the file
+            const document = await uploadDocument(file);
+
+            // Show progress updates
+            setState(prev => ({ ...prev, progress: 90 }));
+
+            // Small delay to show progress
+            await new Promise(resolve => setTimeout(resolve, 200));
+            setState(prev => ({ ...prev, progress: 100 }));
 
             onUploadComplete?.(document);
-            setState(prev => ({ ...prev, progress: 100 }));
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Upload failed';
-            setState(prev => ({ ...prev, error: errorMessage }));
+            setState(prev => ({ ...prev, error: errorMessage, progress: 0 }));
             onUploadError?.(errorMessage);
         }
     }, [onUploadComplete, onUploadError]);

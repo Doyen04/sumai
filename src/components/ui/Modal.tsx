@@ -122,10 +122,10 @@ export function Modal({
                                 variant="ghost"
                                 size="sm"
                                 onClick={onClose}
-                                className="h-8 w-8 p-0 -mr-2 -mt-1"
+                                className="h-9 w-9 p-0 -mr-2 -mt-1"
                                 aria-label="Close modal"
                             >
-                                <X className="h-4 w-4" />
+                                <X className="h-8 w-8" />
                             </Button>
                         )}
                     </div>
