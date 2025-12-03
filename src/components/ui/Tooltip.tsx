@@ -16,12 +16,47 @@ export function Tooltip({
     delay = 200,
 }: TooltipProps) {
     const [isVisible, setIsVisible] = useState(false);
-    const [coords, setCoords] = useState({ top: 0, left: 0 });
-    const triggerRef = useRef<HTMLElement>(null);
+    const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
+    const triggerRef = useRef<HTMLSpanElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
     const calculatePosition = useCallback(() => {
+        if (!triggerRef.current) return null;
+
+        const trigger = triggerRef.current.getBoundingClientRect();
+        const gap = 8;
+
+        // Estimate tooltip size (will be adjusted after render)
+        const estimatedWidth = 150;
+        const estimatedHeight = 30;
+
+        let top = 0;
+        let left = 0;
+
+        switch (position) {
+            case 'top':
+                top = trigger.top - estimatedHeight - gap + window.scrollY;
+                left = trigger.left + (trigger.width / 2) - (estimatedWidth / 2) + window.scrollX;
+                break;
+            case 'bottom':
+                top = trigger.bottom + gap + window.scrollY;
+                left = trigger.left + (trigger.width / 2) - (estimatedWidth / 2) + window.scrollX;
+                break;
+            case 'left':
+                top = trigger.top + (trigger.height / 2) - (estimatedHeight / 2) + window.scrollY;
+                left = trigger.left - estimatedWidth - gap + window.scrollX;
+                break;
+            case 'right':
+                top = trigger.top + (trigger.height / 2) - (estimatedHeight / 2) + window.scrollY;
+                left = trigger.right + gap + window.scrollX;
+                break;
+        }
+
+        return { top, left };
+    }, [position]);
+
+    const updatePosition = useCallback(() => {
         if (!triggerRef.current || !tooltipRef.current) return;
 
         const trigger = triggerRef.current.getBoundingClientRect();
@@ -59,6 +94,10 @@ export function Tooltip({
 
     const handleMouseEnter = () => {
         timeoutRef.current = setTimeout(() => {
+            const initialCoords = calculatePosition();
+            if (initialCoords) {
+                setCoords(initialCoords);
+            }
             setIsVisible(true);
         }, delay);
     };
@@ -68,13 +107,18 @@ export function Tooltip({
             clearTimeout(timeoutRef.current);
         }
         setIsVisible(false);
+        setCoords(null);
     };
 
+    // Update position after tooltip is rendered to get accurate dimensions
     useEffect(() => {
-        if (isVisible) {
-            calculatePosition();
+        if (isVisible && tooltipRef.current) {
+            // Small delay to ensure the tooltip is rendered
+            requestAnimationFrame(() => {
+                updatePosition();
+            });
         }
-    }, [isVisible, calculatePosition]);
+    }, [isVisible, updatePosition]);
 
     useEffect(() => {
         return () => {
@@ -84,18 +128,13 @@ export function Tooltip({
         };
     }, []);
 
-    const positionClasses = {
-        top: 'animate-in fade-in-0 slide-in-from-bottom-1',
-        bottom: 'animate-in fade-in-0 slide-in-from-top-1',
-        left: 'animate-in fade-in-0 slide-in-from-right-1',
-        right: 'animate-in fade-in-0 slide-in-from-left-1',
-    };
+    if (!content) return <>{children}</>;
 
     return (
         <>
             {/* Clone children with ref and event handlers */}
             <span
-                ref={triggerRef as React.RefObject<HTMLSpanElement>}
+                ref={triggerRef}
                 onMouseEnter={handleMouseEnter}
                 onMouseLeave={handleMouseLeave}
                 onFocus={handleMouseEnter}
@@ -106,17 +145,18 @@ export function Tooltip({
             </span>
 
             {/* Tooltip */}
-            {isVisible &&
+            {isVisible && coords &&
                 createPortal(
                     <div
                         ref={tooltipRef}
                         role="tooltip"
                         className={cn(
-                            'fixed z-50 px-3 py-1.5',
-                            'text-xs text-white bg-foreground rounded-md',
+                            'fixed z-9999 px-3 py-1.5',
+                            'text-xs rounded-md',
                             'shadow-lg pointer-events-none',
-                            'duration-150',
-                            positionClasses[position]
+                            'bg-foreground text-background',
+                            'transition-opacity duration-150',
+                            'opacity-100'
                         )}
                         style={{
                             top: coords.top,

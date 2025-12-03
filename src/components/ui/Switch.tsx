@@ -37,7 +37,7 @@ export function Switch({
     return (
         <label
             className={cn(
-                'flex items-start gap-3 cursor-pointer',
+                'flex items-center gap-3 cursor-pointer',
                 disabled && 'opacity-50 cursor-not-allowed',
                 className
             )}
