@@ -63,7 +63,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
                                             'text-sm font-medium transition-colors duration-150',
                                             'hover:bg-surface-hover',
                                             isActive
-                                                ? 'bg-accent-light text-accent'
+                                                ? 'bg-accent-light text-white'
                                                 : 'text-muted hover:text-foreground'
                                         )
                                     }
