@@ -116,6 +116,7 @@ export function DocumentsPage() {
                 <DocumentHistory
                     documents={filteredDocuments}
                     isLoading={isLoading}
+                    viewMode={viewMode}
                     onDocumentClick={handleDocumentClick}
                     onDocumentDelete={setDeleteTarget}
                 />

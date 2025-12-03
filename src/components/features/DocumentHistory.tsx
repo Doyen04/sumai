@@ -7,6 +7,7 @@ import type { Document } from '@/types';
 interface DocumentHistoryProps {
     documents: Document[];
     isLoading?: boolean;
+    viewMode?: 'grid' | 'list';
     onDocumentClick: (document: Document) => void;
     onDocumentDelete: (document: Document) => void;
     className?: string;
@@ -15,13 +16,18 @@ interface DocumentHistoryProps {
 export function DocumentHistory({
     documents,
     isLoading = false,
+    viewMode = 'grid',
     onDocumentClick,
     onDocumentDelete,
     className,
 }: DocumentHistoryProps) {
+    const layoutClasses = viewMode === 'grid' 
+        ? 'grid gap-3 sm:grid-cols-2 lg:grid-cols-3'
+        : 'flex flex-col gap-3';
+
     if (isLoading) {
         return (
-            <div className={cn('grid gap-3 sm:grid-cols-2 lg:grid-cols-3', className)}>
+            <div className={cn(layoutClasses, className)}>
                 {Array.from({ length: 6 }).map((_, i) => (
                     <DocumentCardSkeleton key={i} />
                 ))}
@@ -41,7 +47,7 @@ export function DocumentHistory({
     }
 
     return (
-        <div className={cn('grid gap-3 sm:grid-cols-2 lg:grid-cols-3', className)}>
+        <div className={cn(layoutClasses, className)}>
             {documents.map((doc) => (
                 <DocumentCard
                     key={doc.id}
