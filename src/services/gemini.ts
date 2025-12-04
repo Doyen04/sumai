@@ -1,17 +1,41 @@
+import { GoogleGenAI, Type } from '@google/genai';
 import type { Summary, SummaryLength, SummarySection, Highlight, HighlightColorIndex } from '@/types';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
-interface GeminiResponse {
-    candidates: Array<{
-        content: {
-            parts: Array<{
-                text: string;
-            }>;
-        };
-    }>;
-}
+// Initialize the Gemini client
+const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
+
+// Define the response schema for Gemini structured output
+const summaryResponseSchema = {
+    type: Type.OBJECT,
+    properties: {
+        sections: {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    type: {
+                        type: Type.STRING,
+                        enum: ['heading', 'paragraph', 'bullet', 'key-concept'],
+                        description: 'The type of section',
+                    },
+                    content: {
+                        type: Type.STRING,
+                        description: 'The summary content for this section',
+                    },
+                    sourceText: {
+                        type: Type.STRING,
+                        description: 'Exact or near-exact quote from the document that supports this point',
+                    },
+                },
+                required: ['type', 'content'],
+            },
+            description: 'Array of summary sections',
+        },
+    },
+    required: ['sections'],
+};
 
 interface ParsedSummary {
     sections: Array<{
@@ -21,11 +45,46 @@ interface ParsedSummary {
     }>;
 }
 
+// Map file extensions to MIME types
+const MIME_TYPES: Record<string, string> = {
+    pdf: 'application/pdf',
+    docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    doc: 'application/msword',
+    txt: 'text/plain',
+    pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    ppt: 'application/vnd.ms-powerpoint',
+};
+
 /**
- * Generate a summary using Gemini API
+ * Convert a File to base64 string
+ */
+async function fileToBase64(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            const result = reader.result as string;
+            // Remove the data URL prefix (e.g., "data:application/pdf;base64,")
+            const base64 = result.split(',')[1];
+            resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+}
+
+/**
+ * Get MIME type from file extension
+ */
+function getMimeType(fileName: string): string {
+    const ext = fileName.split('.').pop()?.toLowerCase() || '';
+    return MIME_TYPES[ext] || 'application/octet-stream';
+}
+
+/**
+ * Generate a summary using Gemini API with native file support and structured output
  */
 export async function generateSummaryWithGemini(
-    documentContent: string,
+    fileData: { base64: string; mimeType: string; textContent?: string },
     documentId: string,
     length: SummaryLength = 'balanced'
 ): Promise<Summary> {
@@ -39,81 +98,55 @@ export async function generateSummaryWithGemini(
         detailed: 'Create a comprehensive summary with 8-12 points. Include main ideas, supporting details, and nuances.',
     };
 
-    const prompt = `You are a document summarization expert. Analyze the following document and create a structured summary.
+    const prompt = `You are a document summarization expert. Analyze the provided document and create a structured summary.
 
 ${lengthInstructions[length]}
 
-IMPORTANT: Respond ONLY with valid JSON in this exact format (no markdown, no code blocks):
-{
-    "sections": [
-        {"type": "heading", "content": "Main Topic Title"},
-        {"type": "key-concept", "content": "Most important concept from the document", "sourceText": "exact quote from document"},
-        {"type": "heading", "content": "Key Findings"},
-        {"type": "bullet", "content": "First key point", "sourceText": "relevant quote"},
-        {"type": "bullet", "content": "Second key point", "sourceText": "relevant quote"},
-        {"type": "paragraph", "content": "Concluding summary paragraph", "sourceText": "relevant quote"}
-    ]
-}
-
 Rules:
-- "heading" type for section titles
-- "key-concept" type for the most important ideas (include sourceText)
-- "bullet" type for key points (include sourceText when possible)
-- "paragraph" type for detailed explanations (include sourceText when possible)
+- Use "heading" type for section titles (no sourceText needed)
+- Use "key-concept" type for the most important ideas (include sourceText with exact quote)
+- Use "bullet" type for key points (include sourceText when possible)
+- Use "paragraph" type for detailed explanations (include sourceText when possible)
 - sourceText should be exact or near-exact quotes from the document that support the summary point
-- Make sure the summary accurately represents the document content
-
-Document to summarize:
----
-${documentContent.slice(0, 30000)}
----`;
+- Make sure the summary accurately represents the document content`;
 
     try {
-        const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                contents: [{
-                    parts: [{ text: prompt }]
-                }],
-                generationConfig: {
-                    temperature: 0.3,
-                    topK: 40,
-                    topP: 0.95,
-                    maxOutputTokens: 4096,
-                }
-            }),
-        });
+        // Build contents array with text prompt and file data
+        const contents: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
+            { text: prompt }
+        ];
 
-        if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}));
-            throw new Error(`Gemini API error: ${response.status} - ${JSON.stringify(errorData)}`);
+        // For text files, include the text content directly
+        // For binary files (PDF, DOCX, PPTX), use inlineData
+        if (fileData.mimeType === 'text/plain' && fileData.textContent) {
+            contents.push({ text: `\n\nDocument content:\n---\n${fileData.textContent}\n---` });
+        } else {
+            contents.push({
+                inlineData: {
+                    mimeType: fileData.mimeType,
+                    data: fileData.base64
+                }
+            });
         }
 
-        const data: GeminiResponse = await response.json();
+        // Use the gemini-2.5-flash model with structured JSON output
+        const response = await genAI.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: contents,
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: summaryResponseSchema,
+            },
+        });
 
-        if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        const responseText = response.text;
+
+        if (!responseText) {
             throw new Error('Invalid response from Gemini API');
         }
 
-        const responseText = data.candidates[0].content.parts[0].text;
-
-        // Clean up the response - remove markdown code blocks if present
-        let cleanedResponse = responseText.trim();
-        if (cleanedResponse.startsWith('```json')) {
-            cleanedResponse = cleanedResponse.slice(7);
-        }
-        if (cleanedResponse.startsWith('```')) {
-            cleanedResponse = cleanedResponse.slice(3);
-        }
-        if (cleanedResponse.endsWith('```')) {
-            cleanedResponse = cleanedResponse.slice(0, -3);
-        }
-        cleanedResponse = cleanedResponse.trim();
-
-        const parsed: ParsedSummary = JSON.parse(cleanedResponse);
+        // Parse the structured JSON response
+        const parsed: ParsedSummary = JSON.parse(responseText);
 
         // Convert to our Summary format
         const sections: SummarySection[] = [];
@@ -176,9 +209,32 @@ ${documentContent.slice(0, 30000)}
 }
 
 /**
- * Extract text from a file
+ * Process a file for Gemini - converts to base64 and extracts text for display
  */
-export async function extractTextFromFile(file: File): Promise<string> {
+export async function processFileForGemini(file: File): Promise<{
+    base64: string;
+    mimeType: string;
+    textContent: string;
+}> {
+    const mimeType = getMimeType(file.name);
+    const base64 = await fileToBase64(file);
+
+    // For text files, also get the text content for display
+    let textContent = '';
+    if (mimeType === 'text/plain') {
+        textContent = await file.text();
+    } else {
+        // For binary files, we'll extract text for display purposes
+        textContent = await extractTextForDisplay(file);
+    }
+
+    return { base64, mimeType, textContent };
+}
+
+/**
+ * Extract text from a file for display in the document viewer
+ */
+async function extractTextForDisplay(file: File): Promise<string> {
     const fileType = file.name.split('.').pop()?.toLowerCase();
 
     if (fileType === 'txt') {
@@ -186,8 +242,6 @@ export async function extractTextFromFile(file: File): Promise<string> {
     }
 
     if (fileType === 'pdf') {
-        // For PDF files, we'll use pdf.js or send to a server
-        // For now, return a message that PDF parsing requires additional setup
         return await parsePdfFile(file);
     }
 
@@ -195,48 +249,55 @@ export async function extractTextFromFile(file: File): Promise<string> {
         return await parseDocxFile(file);
     }
 
-    throw new Error(`Unsupported file type: ${fileType}`);
+    // For unsupported types, return a placeholder
+    return `[Document: ${file.name}]\n\nThis document type is being processed by Gemini AI for summarization.`;
 }
 
 /**
- * Parse PDF file to text using pdf.js
+ * Parse PDF file to text using pdf.js (for display purposes)
  */
 async function parsePdfFile(file: File): Promise<string> {
-    // Dynamic import of pdf.js
-    const pdfjsLib = await import('pdfjs-dist');
+    try {
+        const pdfjsLib = await import('pdfjs-dist');
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
-    // Set worker source
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+        const arrayBuffer = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
 
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        let fullText = '';
 
-    let fullText = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i);
+            const textContent = await page.getTextContent();
+            const pageText = textContent.items
+                .map((item) => {
+                    if ('str' in item) {
+                        return (item as { str: string }).str;
+                    }
+                    return '';
+                })
+                .join(' ');
+            fullText += pageText + '\n\n';
+        }
 
-    for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items
-            .map((item) => {
-                // TextItem has 'str' property, TextMarkedContent does not
-                if ('str' in item) {
-                    return (item as { str: string }).str;
-                }
-                return '';
-            })
-            .join(' ');
-        fullText += pageText + '\n\n';
+        return fullText || `[PDF Document: ${file.name}]`;
+    } catch (error) {
+        console.error('PDF parsing error:', error);
+        return `[PDF Document: ${file.name}]\n\nUnable to extract text preview. The document will still be processed by Gemini AI.`;
     }
-
-    return fullText;
 }
 
 /**
- * Parse DOCX file to text using mammoth
+ * Parse DOCX file to text using mammoth (for display purposes)
  */
 async function parseDocxFile(file: File): Promise<string> {
-    const mammoth = await import('mammoth');
-    const arrayBuffer = await file.arrayBuffer();
-    const result = await mammoth.extractRawText({ arrayBuffer });
-    return result.value;
+    try {
+        const mammoth = await import('mammoth');
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.extractRawText({ arrayBuffer });
+        return result.value || `[DOCX Document: ${file.name}]`;
+    } catch (error) {
+        console.error('DOCX parsing error:', error);
+        return `[DOCX Document: ${file.name}]\n\nUnable to extract text preview. The document will still be processed by Gemini AI.`;
+    }
 }

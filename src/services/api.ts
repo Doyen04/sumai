@@ -1,22 +1,25 @@
 import type { Document, Summary, UserSettings, ExportFormat, SummaryLength } from '@/types';
-import { extractTextFromFile, generateSummaryWithGemini } from './gemini';
+import { processFileForGemini, generateSummaryWithGemini } from './gemini';
 
 // Simulated API delay
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // In-memory document storage (in production, this would be a database)
-const documentStore = new Map<string, { document: Document; content: string }>();
+const documentStore = new Map<string, {
+    document: Document;
+    fileData: { base64: string; mimeType: string; textContent: string };
+}>();
 
 /**
  * Upload a document to the server
  */
 export async function uploadDocument(file: File): Promise<Document> {
     try {
-        // Extract text from the file
-        const content = await extractTextFromFile(file);
+        // Process file for Gemini (get base64, mimeType, and text for display)
+        const fileData = await processFileForGemini(file);
 
         // Estimate page count based on content length (roughly 3000 chars per page)
-        const estimatedPages = Math.max(1, Math.ceil(content.length / 3000));
+        const estimatedPages = Math.max(1, Math.ceil(fileData.textContent.length / 3000));
 
         const document: Document = {
             id: `doc_${Date.now()}`,
@@ -26,11 +29,11 @@ export async function uploadDocument(file: File): Promise<Document> {
             pageCount: estimatedPages,
             uploadedAt: new Date(),
             status: 'completed',
-            content: content,
+            content: fileData.textContent,
         };
 
-        // Store document in memory
-        documentStore.set(document.id, { document, content });
+        // Store document with file data for Gemini
+        documentStore.set(document.id, { document, fileData });
 
         return document;
     } catch (error) {
@@ -44,7 +47,15 @@ export async function uploadDocument(file: File): Promise<Document> {
  */
 export function getDocumentContent(documentId: string): string | null {
     const stored = documentStore.get(documentId);
-    return stored?.content ?? null;
+    return stored?.document.content ?? null;
+}
+
+/**
+ * Get document file data by ID (for Gemini)
+ */
+export function getDocumentFileData(documentId: string): { base64: string; mimeType: string; textContent: string } | null {
+    const stored = documentStore.get(documentId);
+    return stored?.fileData ?? null;
 }
 
 /**
@@ -54,15 +65,15 @@ export async function generateSummary(
     documentId: string,
     length: SummaryLength = 'balanced'
 ): Promise<Summary> {
-    // Get the document content
-    const content = getDocumentContent(documentId);
+    // Get the document file data
+    const fileData = getDocumentFileData(documentId);
 
-    if (!content) {
+    if (!fileData) {
         throw new Error(`Document ${documentId} not found or has no content`);
     }
 
-    // Generate summary using Gemini
-    const summary = await generateSummaryWithGemini(content, documentId, length);
+    // Generate summary using Gemini with native file support
+    const summary = await generateSummaryWithGemini(fileData, documentId, length);
 
     // Update the stored document with the summary
     const stored = documentStore.get(documentId);
