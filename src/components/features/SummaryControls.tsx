@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
     FileDown,
     Copy,
+    Check,
     RefreshCw,
     FileText,
     Presentation,
@@ -38,6 +39,13 @@ export function SummaryControls({
     className,
 }: SummaryControlsProps) {
     const [showExportMenu, setShowExportMenu] = useState(false);
+    const [isCopied, setIsCopied] = useState(false);
+
+    const handleCopy = () => {
+        onCopy();
+        setIsCopied(true);
+        setTimeout(() => setIsCopied(false), 2000);
+    };
 
     const visibilityOptions = [
         { value: 'all', label: 'All highlights', icon: Eye },
@@ -117,10 +125,11 @@ export function SummaryControls({
                 <Button
                     variant="secondary"
                     size="sm"
-                    onClick={onCopy}
-                    leftIcon={<Copy className="w-4 h-4" />}
+                    onClick={handleCopy}
+                    leftIcon={isCopied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    className={isCopied ? 'bg-accent text-white' : ''}
                 >
-                    Copy
+                    {isCopied ? 'Copied!' : 'Copy'}
                 </Button>
 
                 {/* Export Dropdown */}
