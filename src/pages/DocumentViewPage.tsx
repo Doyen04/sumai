@@ -19,7 +19,7 @@ export function DocumentViewPage() {
     const [document, setDocument] = useState<Document | null>(null);
     const [isLoadingDocument, setIsLoadingDocument] = useState(true);
     const [summary, setSummary] = useState<Summary | null>(null);
-    const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+    const [isLoadingSummary, setIsLoadingSummary] = useState(true);
     const [summaryLength, setSummaryLength] = useState<SummaryLength>('balanced');
     const [highlightVisibility, setHighlightVisibility] = useState<HighlightVisibility>('all');
     const [error, setError] = useState<string | null>(null);
@@ -50,10 +50,12 @@ export function DocumentViewPage() {
                     setDocument(doc);
                 } else {
                     setError('Document not found. It may have been deleted or the session expired.');
+                    setIsLoadingSummary(false);
                 }
             } catch (err) {
                 console.error('Failed to load document:', err);
                 setError('Failed to load document.');
+                setIsLoadingSummary(false);
             } finally {
                 setIsLoadingDocument(false);
             }
@@ -216,6 +218,8 @@ export function DocumentViewPage() {
                     <DocumentViewer
                         ref={leftPanelRef}
                         content={document.content || ''}
+                        contentType={document.contentType}
+                        pdfData={document.pdfData}
                         highlights={highlightVisibility !== 'none' ? filteredHighlights : []}
                         activeHighlightId={activeHighlightId}
                         hoveredHighlightId={hoveredHighlightId}

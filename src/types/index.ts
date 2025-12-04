@@ -9,6 +9,8 @@ export interface Document {
     pageCount: number;
     uploadedAt: Date;
     content?: string;
+    contentType?: 'text' | 'html' | 'pdf';
+    pdfData?: string; // Base64 encoded PDF for native rendering
     summary?: Summary;
     status: DocumentStatus;
 }

@@ -7,7 +7,7 @@ const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 // In-memory document storage (in production, this would be a database)
 const documentStore = new Map<string, {
     document: Document;
-    fileData: { base64: string; mimeType: string; textContent: string };
+    fileData: { base64: string; mimeType: string; textContent: string; plainText: string; contentType: 'text' | 'html' | 'pdf' };
 }>();
 
 /**
@@ -19,7 +19,9 @@ export async function uploadDocument(file: File): Promise<Document> {
         const fileData = await processFileForGemini(file);
 
         // Estimate page count based on content length (roughly 3000 chars per page)
-        const estimatedPages = Math.max(1, Math.ceil(fileData.textContent.length / 3000));
+        // For PDFs, use plainText length since textContent is empty
+        const textForEstimate = fileData.contentType === 'pdf' ? fileData.plainText : fileData.textContent;
+        const estimatedPages = Math.max(1, Math.ceil(textForEstimate.length / 3000));
 
         const document: Document = {
             id: `doc_${Date.now()}`,
@@ -30,6 +32,9 @@ export async function uploadDocument(file: File): Promise<Document> {
             uploadedAt: new Date(),
             status: 'completed',
             content: fileData.textContent,
+            contentType: fileData.contentType,
+            // Store base64 PDF data for native rendering
+            pdfData: fileData.contentType === 'pdf' ? fileData.base64 : undefined,
         };
 
         // Store document with file data for Gemini
@@ -53,7 +58,7 @@ export function getDocumentContent(documentId: string): string | null {
 /**
  * Get document file data by ID (for Gemini)
  */
-export function getDocumentFileData(documentId: string): { base64: string; mimeType: string; textContent: string } | null {
+export function getDocumentFileData(documentId: string): { base64: string; mimeType: string; textContent: string; plainText: string; contentType: 'text' | 'html' | 'pdf' } | null {
     const stored = documentStore.get(documentId);
     return stored?.fileData ?? null;
 }

@@ -1,4 +1,4 @@
-import { forwardRef, useMemo } from 'react';
+import { forwardRef, useMemo, useEffect } from 'react';
 import { Search, ZoomIn, ZoomOut } from 'lucide-react';
 import { cn } from '@/utils';
 import { Button, Input, DocumentViewerSkeleton } from '@/components/ui';
@@ -7,6 +7,8 @@ import { HIGHLIGHT_COLORS } from '@/constants';
 
 interface DocumentViewerProps {
     content: string;
+    contentType?: 'text' | 'html' | 'pdf';
+    pdfData?: string; // Base64 encoded PDF data
     highlights: Highlight[];
     activeHighlightId: string | null;
     hoveredHighlightId: string | null;
@@ -25,6 +27,8 @@ export const DocumentViewer = forwardRef<HTMLDivElement, DocumentViewerProps>(
     (
         {
             content,
+            contentType = 'text',
+            pdfData,
             highlights,
             activeHighlightId,
             hoveredHighlightId,
@@ -35,6 +39,34 @@ export const DocumentViewer = forwardRef<HTMLDivElement, DocumentViewerProps>(
         },
         ref
     ) => {
+        // Create blob URL for PDF display
+        const pdfBlobUrl = useMemo(() => {
+            if (contentType !== 'pdf' || !pdfData) return null;
+
+            try {
+                const byteCharacters = atob(pdfData);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                    byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: 'application/pdf' });
+                return URL.createObjectURL(blob);
+            } catch (error) {
+                console.error('Error creating PDF blob URL:', error);
+                return null;
+            }
+        }, [pdfData, contentType]);
+
+        // Clean up blob URL on unmount
+        useEffect(() => {
+            return () => {
+                if (pdfBlobUrl) {
+                    URL.revokeObjectURL(pdfBlobUrl);
+                }
+            };
+        }, [pdfBlobUrl]);
+
         // Get the CSS class for highlight color based on colorIndex
         const getHighlightStyle = (colorIndex: number, isActive: boolean) => {
             const colorMap: Record<number, { base: string; active: string; border: string }> = {
@@ -168,6 +200,29 @@ export const DocumentViewer = forwardRef<HTMLDivElement, DocumentViewerProps>(
 
         // Render content with inline highlights
         const renderContent = () => {
+            // For HTML content (like DOCX), render with dangerouslySetInnerHTML
+            if (contentType === 'html') {
+                return (
+                    <div
+                        className="document-content prose prose-sm max-w-none dark:prose-invert
+                            [&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-6 [&_h1]:mb-4
+                            [&_h2]:text-xl [&_h2]:font-semibold [&_h2]:mt-5 [&_h2]:mb-3
+                            [&_h3]:text-lg [&_h3]:font-medium [&_h3]:mt-4 [&_h3]:mb-2
+                            [&_p]:my-3 [&_p]:leading-relaxed
+                            [&_ul]:list-disc [&_ul]:ml-6 [&_ul]:my-2
+                            [&_ol]:list-decimal [&_ol]:ml-6 [&_ol]:my-2
+                            [&_li]:my-1
+                            [&_strong]:font-semibold
+                            [&_em]:italic
+                            [&_table]:border-collapse [&_table]:w-full [&_table]:my-4
+                            [&_th]:border [&_th]:border-border [&_th]:p-2 [&_th]:bg-surface
+                            [&_td]:border [&_td]:border-border [&_td]:p-2"
+                        dangerouslySetInnerHTML={{ __html: content }}
+                    />
+                );
+            }
+
+            // For plain text content, render with highlight support
             return (
                 <div className="document-content whitespace-pre-wrap leading-relaxed">
                     {segments.map((segment, idx) => {
@@ -204,6 +259,33 @@ export const DocumentViewer = forwardRef<HTMLDivElement, DocumentViewerProps>(
             return (
                 <div className={cn('h-full overflow-auto', className)}>
                     <DocumentViewerSkeleton />
+                </div>
+            );
+        }
+
+        // For PDF, render using object tag with blob URL
+        if (contentType === 'pdf' && pdfBlobUrl) {
+            return (
+                <div className={cn('flex flex-col h-full', className)}>
+                    <object
+                        data={pdfBlobUrl}
+                        type="application/pdf"
+                        className="w-full h-full"
+                        title="PDF Document"
+                    >
+                        <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                            <p className="text-muted mb-4">
+                                Unable to display PDF in browser.
+                            </p>
+                            <a
+                                href={pdfBlobUrl}
+                                download="document.pdf"
+                                className="text-accent hover:underline"
+                            >
+                                Download PDF
+                            </a>
+                        </div>
+                    </object>
                 </div>
             );
         }

@@ -156,7 +156,7 @@ export const SummaryPanel = forwardRef<HTMLDivElement, SummaryPanelProps>(
             return (
                 <div className={cn('h-full flex items-center justify-center p-6', className)}>
                     <p className="text-sm text-muted text-center">
-                        Upload a document to generate a summary
+                        Summary will appear here
                     </p>
                 </div>
             );

@@ -94,7 +94,7 @@ function getMimeType(fileName: string): string {
  * Generate a summary using Gemini API with native file support and structured output
  */
 export async function generateSummaryWithGemini(
-    fileData: { base64: string; mimeType: string; textContent?: string },
+    fileData: { base64: string; mimeType: string; textContent?: string; plainText?: string },
     documentId: string,
     length: SummaryLength = 'balanced'
 ): Promise<Summary> {
@@ -178,9 +178,10 @@ Section types:
                     data: fileData.base64
                 }
             });
-        } else if (fileData.textContent) {
-            // For DOCX, TXT, PPTX - use extracted text content
-            contents.push({ text: `\n\nDocument content:\n---\n${fileData.textContent}\n---` });
+        } else if (fileData.plainText || fileData.textContent) {
+            // For DOCX, TXT, PPTX - use plain text for Gemini (not HTML)
+            const textForGemini = fileData.plainText || fileData.textContent;
+            contents.push({ text: `\n\nDocument content:\n---\n${textForGemini}\n---` });
         } else {
             throw new Error('No content available for summarization');
         }
@@ -269,26 +270,42 @@ Section types:
 }
 
 /**
- * Process a file for Gemini - converts to base64 and extracts text for display
+ * Process a file for Gemini - converts to base64 and extracts text/HTML for display
  */
 export async function processFileForGemini(file: File): Promise<{
     base64: string;
     mimeType: string;
     textContent: string;
+    plainText: string;
+    contentType: 'text' | 'html' | 'pdf';
 }> {
     const mimeType = getMimeType(file.name);
     const base64 = await fileToBase64(file);
+    const fileType = file.name.split('.').pop()?.toLowerCase();
 
-    // For text files, also get the text content for display
-    let textContent = '';
-    if (mimeType === 'text/plain') {
-        textContent = await file.text();
-    } else {
-        // For binary files, we'll extract text for display purposes
-        textContent = await extractTextForDisplay(file);
+    // For PDF files, we use the native PDF viewer - no text extraction needed for display
+    if (fileType === 'pdf') {
+        // Extract text for Gemini summarization (used when sending to API)
+        const plainText = await parsePdfFile(file);
+        return { base64, mimeType, textContent: '', plainText, contentType: 'pdf' };
     }
 
-    return { base64, mimeType, textContent };
+    // For text files, get plain text
+    if (mimeType === 'text/plain') {
+        const textContent = await file.text();
+        return { base64, mimeType, textContent, plainText: textContent, contentType: 'text' };
+    }
+
+    // For DOCX, get HTML to preserve formatting for display, and plain text for Gemini
+    if (fileType === 'docx') {
+        const htmlContent = await parseDocxFileAsHtml(file);
+        const plainText = await parseDocxFile(file);
+        return { base64, mimeType, textContent: htmlContent, plainText, contentType: 'html' };
+    }
+
+    // For other files, extract text
+    const textContent = await extractTextForDisplay(file);
+    return { base64, mimeType, textContent, plainText: textContent, contentType: 'text' };
 }
 
 /**
@@ -359,5 +376,20 @@ async function parseDocxFile(file: File): Promise<string> {
     } catch (error) {
         console.error('DOCX parsing error:', error);
         return `[DOCX Document: ${file.name}]\n\nUnable to extract text preview. The document will still be processed by Gemini AI.`;
+    }
+}
+
+/**
+ * Parse DOCX file to HTML using mammoth (preserves formatting)
+ */
+async function parseDocxFileAsHtml(file: File): Promise<string> {
+    try {
+        const mammoth = await import('mammoth');
+        const arrayBuffer = await file.arrayBuffer();
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        return result.value || `<p>[DOCX Document: ${file.name}]</p>`;
+    } catch (error) {
+        console.error('DOCX HTML parsing error:', error);
+        return `<p>[DOCX Document: ${file.name}]</p><p>Unable to extract formatted preview.</p>`;
     }
 }
