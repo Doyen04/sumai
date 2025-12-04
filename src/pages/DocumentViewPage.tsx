@@ -94,8 +94,25 @@ export function DocumentViewPage() {
         }
     };
 
-    const handleLengthChange = (length: SummaryLength) => {
+    const handleLengthChange = async (length: SummaryLength) => {
+        if (length === summaryLength) return;
+
         setSummaryLength(length);
+
+        // Regenerate summary with new length
+        if (id && document?.content) {
+            try {
+                setIsRegenerating(true);
+                setError(null);
+                const result = await generateSummary(id, length);
+                setSummary(result);
+            } catch (err) {
+                const errorMessage = err instanceof Error ? err.message : 'Failed to generate summary';
+                setError(errorMessage);
+            } finally {
+                setIsRegenerating(false);
+            }
+        }
     };
 
     const handleVisibilityChange = (visibility: HighlightVisibility) => {

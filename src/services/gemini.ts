@@ -26,7 +26,15 @@ const summaryResponseSchema = {
                     },
                     sourceText: {
                         type: Type.STRING,
-                        description: 'Exact or near-exact quote from the document that supports this point',
+                        description: 'EXACT verbatim quote copied from the document (10-50 words)',
+                    },
+                    startIndex: {
+                        type: Type.NUMBER,
+                        description: 'Character index where sourceText starts in the document (0-based)',
+                    },
+                    endIndex: {
+                        type: Type.NUMBER,
+                        description: 'Character index where sourceText ends in the document',
                     },
                 },
                 required: ['type', 'content'],
@@ -42,6 +50,8 @@ interface ParsedSummary {
         type: 'heading' | 'paragraph' | 'bullet' | 'key-concept';
         content: string;
         sourceText?: string;
+        startIndex?: number;
+        endIndex?: number;
     }>;
 }
 
@@ -93,22 +103,63 @@ export async function generateSummaryWithGemini(
     }
 
     const lengthInstructions = {
-        short: 'Create a very concise summary with only 3-5 key points. Be brief and focus on the most critical information.',
-        balanced: 'Create a balanced summary with 5-8 key points. Include main ideas and important details.',
-        detailed: 'Create a comprehensive summary with 8-12 points. Include main ideas, supporting details, and nuances.',
+        short: `Create a focused summary with 8-12 key points covering:
+- All main topics/chapters/sections mentioned
+- Key definitions and terminology
+- Critical facts, figures, dates, and names
+- Core concepts that would appear in an exam`,
+        balanced: `Create a comprehensive summary with 15-20 key points covering:
+- ALL major topics, sections, and themes
+- Important definitions, formulas, and terminology
+- Key facts, statistics, dates, names, and events
+- Cause-effect relationships and processes
+- Examples and case studies mentioned
+- Conclusions and main arguments`,
+        detailed: `Create an exhaustive summary with 25-35 key points covering:
+- EVERY topic, section, subtopic, and theme in the document
+- ALL definitions, formulas, terminology, and technical terms
+- ALL facts, figures, statistics, dates, names, and events
+- Detailed processes, steps, and procedures
+- Cause-effect relationships and their explanations
+- ALL examples, case studies, and illustrations
+- Arguments, counterarguments, and conclusions
+- Any lists, classifications, or categorizations
+- Exceptions, edge cases, and important notes`,
     };
 
-    const prompt = `You are a document summarization expert. Analyze the provided document and create a structured summary.
+    const prompt = `You are an expert study guide creator. Your goal is to create a summary so comprehensive that someone reading ONLY your summary could answer 70-80% of any questions about this document.
 
 ${lengthInstructions[length]}
 
-Rules:
-- Use "heading" type for section titles (no sourceText needed)
-- Use "key-concept" type for the most important ideas (include sourceText with exact quote)
-- Use "bullet" type for key points (include sourceText when possible)
-- Use "paragraph" type for detailed explanations (include sourceText when possible)
-- sourceText should be exact or near-exact quotes from the document that support the summary point
-- Make sure the summary accurately represents the document content`;
+COVERAGE REQUIREMENTS:
+- Scan the ENTIRE document from beginning to end
+- Do NOT skip any section, chapter, or topic
+- Include information from ALL parts: introduction, body, conclusion, any appendices
+- Capture specific details: names, dates, numbers, percentages, formulas
+- Include "who, what, when, where, why, how" for key events/concepts
+- Note any lists, steps, categories, or classifications completely
+
+STRUCTURE YOUR SUMMARY:
+1. Start with document overview/purpose
+2. Cover each major section/topic with its key details
+3. Include important supporting details and examples
+4. End with conclusions/key takeaways
+
+FOR EACH POINT (except headings), you MUST provide:
+- sourceText: An EXACT, VERBATIM quote (15-60 words) copied character-for-character
+- startIndex: Character position (0-based) where quote STARTS
+- endIndex: Character position where quote ENDS
+
+RULES:
+- sourceText must be EXACTLY as it appears - same punctuation, capitalization, spacing
+- Spread quotes throughout the document (beginning, middle, end sections)
+- Include quotes that contain specific facts, definitions, or key statements
+
+Section types:
+- "heading": Section/topic titles (no sourceText needed)
+- "key-concept": Critical definitions, main ideas (MUST include sourceText + indices)
+- "bullet": Important facts, details, steps (MUST include sourceText + indices)  
+- "paragraph": Explanations, examples, context (MUST include sourceText + indices)`;
 
     try {
         // Build contents array with text prompt and file data
@@ -116,20 +167,25 @@ Rules:
             { text: prompt }
         ];
 
-        // For text files, include the text content directly
-        // For binary files (PDF, DOCX, PPTX), use inlineData
-        if (fileData.mimeType === 'text/plain' && fileData.textContent) {
-            contents.push({ text: `\n\nDocument content:\n---\n${fileData.textContent}\n---` });
-        } else {
+        // Gemini only supports PDF for inlineData, other formats need text extraction
+        const supportedInlineTypes = ['application/pdf'];
+
+        if (supportedInlineTypes.includes(fileData.mimeType)) {
+            // Use inlineData for PDFs
             contents.push({
                 inlineData: {
                     mimeType: fileData.mimeType,
                     data: fileData.base64
                 }
             });
+        } else if (fileData.textContent) {
+            // For DOCX, TXT, PPTX - use extracted text content
+            contents.push({ text: `\n\nDocument content:\n---\n${fileData.textContent}\n---` });
+        } else {
+            throw new Error('No content available for summarization');
         }
 
-        // Use the gemini-2.5-flash model with structured JSON output
+        // Use gemini-2.5-flash for better free tier limits
         const response = await genAI.models.generateContent({
             model: 'gemini-2.5-flash',
             contents: contents,
@@ -170,11 +226,15 @@ Rules:
                 confidence: 'high',
             };
 
-            // Create highlight for sections with source text
+            // Create highlight for sections with source text and position info
             if (section.sourceText && section.type !== 'heading') {
                 highlightIndex++;
                 const highlightId = `h${highlightIndex}`;
                 summarySection.highlightId = highlightId;
+
+                // Use character indices from Gemini for precise positioning
+                const startIdx = section.startIndex ?? 0;
+                const endIdx = section.endIndex ?? (startIdx + section.sourceText.length);
 
                 highlights.push({
                     id: highlightId,
@@ -185,8 +245,8 @@ Rules:
                     sourceLocation: {
                         page: 1,
                         paragraph: highlightIndex,
-                        startOffset: 0,
-                        endOffset: section.sourceText.length,
+                        startOffset: startIdx,
+                        endOffset: endIdx,
                     },
                 });
             }
