@@ -121,11 +121,11 @@ async function splitPdfIntoChunks(base64Pdf: string): Promise<{ chunks: string[]
 
     try {
         // Load the PDF with lenient parsing options
-        const pdfDoc = await PDFDocument.load(bytes, { 
+        const pdfDoc = await PDFDocument.load(bytes, {
             ignoreEncryption: true,
             updateMetadata: false,
         });
-        
+
         // Use getPages().length as shown in the example
         const totalPages = pdfDoc.getPages().length;
 
@@ -147,7 +147,7 @@ async function splitPdfIntoChunks(base64Pdf: string): Promise<{ chunks: string[]
             const chunkPdf = await PDFDocument.create();
             const pageIndices = Array.from({ length: numPages }, (_, i) => startPage + i);
             const copiedPages = await chunkPdf.copyPages(pdfDoc, pageIndices);
-            
+
             // Add each page to the new document
             copiedPages.forEach(page => chunkPdf.addPage(page));
 
@@ -189,6 +189,9 @@ async function processPdfChunk(
 ${lengthInstructions[length]}
 
 IMPORTANT: This is only a portion of the full document. Focus on the content in this section.
+- Extract and include data from ALL tables, charts, and diagrams in this section
+- For tables: include key rows, columns, and notable values
+- For charts/graphs: describe trends, peaks, comparisons
 
 For each point, provide:
 - type: "heading", "paragraph", "bullet", or "key-concept"
@@ -198,7 +201,7 @@ For each point, provide:
 Section types:
 - "heading": Section/topic titles (no sourceText needed)
 - "key-concept": Critical definitions, main ideas
-- "bullet": Important facts, details, steps
+- "bullet": Important facts, details, steps, table data
 - "paragraph": Explanations, examples, context`;
 
     const response = await genAI.models.generateContent({
@@ -237,14 +240,16 @@ export async function generateSummaryWithGemini(
 - All main topics/chapters/sections mentioned
 - Key definitions and terminology
 - Critical facts, figures, dates, and names
-- Core concepts that would appear in an exam`,
+- Core concepts that would appear in an exam
+- Key data from any tables or charts`,
         balanced: `Create a comprehensive summary with 15-20 key points covering:
 - ALL major topics, sections, and themes
 - Important definitions, formulas, and terminology
 - Key facts, statistics, dates, names, and events
 - Cause-effect relationships and processes
 - Examples and case studies mentioned
-- Conclusions and main arguments`,
+- Conclusions and main arguments
+- Important data from tables, charts, and diagrams`,
         detailed: `Create an exhaustive summary with 25-35 key points covering:
 - EVERY topic, section, subtopic, and theme in the document
 - ALL definitions, formulas, terminology, and technical terms
@@ -254,7 +259,8 @@ export async function generateSummaryWithGemini(
 - ALL examples, case studies, and illustrations
 - Arguments, counterarguments, and conclusions
 - Any lists, classifications, or categorizations
-- Exceptions, edge cases, and important notes`,
+- Exceptions, edge cases, and important notes
+- ALL data from tables, charts, graphs, and diagrams (include specific values)`,
     };
 
     const prompt = `You are an expert study guide creator. Your goal is to create a summary so comprehensive that someone reading ONLY your summary could answer 70-80% of any questions about this document.
@@ -268,12 +274,17 @@ COVERAGE REQUIREMENTS:
 - Capture specific details: names, dates, numbers, percentages, formulas
 - Include "who, what, when, where, why, how" for key events/concepts
 - Note any lists, steps, categories, or classifications completely
+- IMPORTANT: Extract and include data from ALL tables, charts, and diagrams
+  - For tables: include key rows, columns, and notable values
+  - For charts/graphs: describe trends, peaks, comparisons
+  - For diagrams: explain the relationships or processes shown
 
 STRUCTURE YOUR SUMMARY:
 1. Start with document overview/purpose
 2. Cover each major section/topic with its key details
 3. Include important supporting details and examples
-4. End with conclusions/key takeaways
+4. Include table/chart data where relevant
+5. End with conclusions/key takeaways
 
 FOR EACH POINT (except headings), you MUST provide:
 - sourceText: An EXACT, VERBATIM quote (15-60 words) copied character-for-character
@@ -418,11 +429,11 @@ Section types:
         };
     } catch (error: unknown) {
         console.error('Gemini API error:', error);
-        
+
         // Try to extract the message from Gemini API error response
         const errorObj = error as { message?: string };
         const errorMessage = errorObj?.message || String(error);
-        
+
         // Try to parse JSON error message from API
         try {
             const jsonMatch = errorMessage.match(/\{[\s\S]*\}/);
@@ -435,7 +446,7 @@ Section types:
         } catch {
             // Not JSON, use original message
         }
-        
+
         throw new Error(errorMessage);
     }
 }
