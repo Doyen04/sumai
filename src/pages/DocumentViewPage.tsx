@@ -65,7 +65,9 @@ export function DocumentViewPage() {
     }, [id]);
 
     const handleGenerateSummary = useCallback(async () => {
-        if (!id || !document?.content) return;
+        // For PDFs, content is empty but we still have the file data
+        // Check if document exists (not just content) since PDFs have pdfData instead
+        if (!id || !document) return;
 
         try {
             setIsLoadingSummary(true);
@@ -78,14 +80,16 @@ export function DocumentViewPage() {
         } finally {
             setIsLoadingSummary(false);
         }
-    }, [id, summaryLength, document?.content]);
+    }, [id, summaryLength, document]);
 
     // Auto-generate summary when document is loaded
     useEffect(() => {
-        if (document?.content && !summary) {
+        // Trigger for non-PDF (has content) or PDF (has pdfData)
+        const canGenerateSummary = document?.content || document?.pdfData;
+        if (canGenerateSummary && !summary) {
             handleGenerateSummary();
         }
-    }, [document?.content, summary, handleGenerateSummary]);
+    }, [document?.content, document?.pdfData, summary, handleGenerateSummary]);
 
     const handleRegenerate = async () => {
         try {

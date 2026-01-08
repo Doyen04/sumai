@@ -1,7 +1,11 @@
 import { GoogleGenAI, Type } from '@google/genai';
+import { PDFDocument } from 'pdf-lib';
 import type { Summary, SummaryLength, SummarySection, Highlight, HighlightColorIndex } from '@/types';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
+
+// Maximum pages per chunk (Gemini limit is 1000)
+const MAX_PAGES_PER_CHUNK = 500;
 
 // Initialize the Gemini client
 const genAI = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
@@ -91,6 +95,132 @@ function getMimeType(fileName: string): string {
 }
 
 /**
+ * Convert Uint8Array to base64 string (memory efficient for large files)
+ */
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+    // Process in chunks to avoid stack overflow
+    const chunkSize = 0x8000; // 32KB chunks
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+        binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+    }
+    return btoa(binary);
+}
+
+/**
+ * Split a PDF into chunks of MAX_PAGES_PER_CHUNK pages each
+ */
+async function splitPdfIntoChunks(base64Pdf: string): Promise<{ chunks: string[]; totalPages: number }> {
+    // Decode base64 to bytes
+    const binaryString = atob(base64Pdf);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+
+    try {
+        // Load the PDF with lenient parsing options
+        const pdfDoc = await PDFDocument.load(bytes, { 
+            ignoreEncryption: true,
+            updateMetadata: false,
+        });
+        
+        // Use getPages().length as shown in the example
+        const totalPages = pdfDoc.getPages().length;
+
+        // If small enough, return as single chunk
+        if (totalPages <= MAX_PAGES_PER_CHUNK) {
+            return { chunks: [base64Pdf], totalPages };
+        }
+
+        console.log(`Splitting PDF with ${totalPages} pages into chunks of ${MAX_PAGES_PER_CHUNK}...`);
+
+        const chunks: string[] = [];
+        let startPage = 0;
+
+        while (startPage < totalPages) {
+            const endPage = Math.min(startPage + MAX_PAGES_PER_CHUNK, totalPages);
+            const numPages = endPage - startPage;
+
+            // Create a new PDF with just this chunk's pages
+            const chunkPdf = await PDFDocument.create();
+            const pageIndices = Array.from({ length: numPages }, (_, i) => startPage + i);
+            const copiedPages = await chunkPdf.copyPages(pdfDoc, pageIndices);
+            
+            // Add each page to the new document
+            copiedPages.forEach(page => chunkPdf.addPage(page));
+
+            // Convert chunk to base64 using memory-efficient method
+            const chunkBytes = await chunkPdf.save();
+            const chunkBase64 = uint8ArrayToBase64(chunkBytes);
+            chunks.push(chunkBase64);
+
+            console.log(`Created chunk ${chunks.length}: pages ${startPage + 1}-${endPage}`);
+            startPage = endPage;
+        }
+
+        return { chunks, totalPages };
+    } catch (error) {
+        console.warn('PDF splitting failed, will send as single chunk:', error);
+        // If splitting fails, return original as single chunk
+        // Gemini will return an error if it's too large
+        return { chunks: [base64Pdf], totalPages: -1 };
+    }
+}
+
+/**
+ * Process a single PDF chunk and return parsed sections
+ */
+async function processPdfChunk(
+    base64Chunk: string,
+    chunkIndex: number,
+    totalChunks: number,
+    length: SummaryLength
+): Promise<ParsedSummary> {
+    const lengthInstructions = {
+        short: `Create a focused summary with 4-6 key points for this section.`,
+        balanced: `Create a comprehensive summary with 8-12 key points for this section.`,
+        detailed: `Create an exhaustive summary with 15-20 key points for this section.`,
+    };
+
+    const prompt = `You are summarizing PART ${chunkIndex + 1} of ${totalChunks} of a large document.
+
+${lengthInstructions[length]}
+
+IMPORTANT: This is only a portion of the full document. Focus on the content in this section.
+
+For each point, provide:
+- type: "heading", "paragraph", "bullet", or "key-concept"
+- content: Your summary of this point
+- sourceText: An EXACT quote from this section (15-60 words)
+
+Section types:
+- "heading": Section/topic titles (no sourceText needed)
+- "key-concept": Critical definitions, main ideas
+- "bullet": Important facts, details, steps
+- "paragraph": Explanations, examples, context`;
+
+    const response = await genAI.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: [
+            { text: prompt },
+            { inlineData: { mimeType: 'application/pdf', data: base64Chunk } }
+        ],
+        config: {
+            responseMimeType: 'application/json',
+            responseSchema: summaryResponseSchema,
+        },
+    });
+
+    if (!response?.text) {
+        throw new Error(`No response for chunk ${chunkIndex + 1}`);
+    }
+
+    return JSON.parse(response.text) as ParsedSummary;
+}
+
+/**
  * Generate a summary using Gemini API with native file support and structured output
  */
 export async function generateSummaryWithGemini(
@@ -162,48 +292,71 @@ Section types:
 - "paragraph": Explanations, examples, context (MUST include sourceText + indices)`;
 
     try {
-        // Build contents array with text prompt and file data
-        const contents: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
-            { text: prompt }
-        ];
+        let parsed: ParsedSummary;
 
-        // Gemini only supports PDF for inlineData, other formats need text extraction
-        const supportedInlineTypes = ['application/pdf'];
+        // For PDFs, check if we need to split into chunks
+        if (fileData.mimeType === 'application/pdf') {
+            const { chunks, totalPages } = await splitPdfIntoChunks(fileData.base64);
 
-        if (supportedInlineTypes.includes(fileData.mimeType)) {
-            // Use inlineData for PDFs
-            contents.push({
-                inlineData: {
-                    mimeType: fileData.mimeType,
-                    data: fileData.base64
+            if (chunks.length === 1) {
+                // Single chunk - process normally
+                console.log(`Processing PDF with ${totalPages} pages...`);
+                const response = await genAI.models.generateContent({
+                    model: 'gemini-2.5-flash',
+                    contents: [
+                        { text: prompt },
+                        { inlineData: { mimeType: 'application/pdf', data: fileData.base64 } }
+                    ],
+                    config: {
+                        responseMimeType: 'application/json',
+                        responseSchema: summaryResponseSchema,
+                    },
+                });
+
+                if (!response?.text) {
+                    throw new Error('No response from Gemini API');
                 }
-            });
+                parsed = JSON.parse(response.text);
+            } else {
+                // Multiple chunks - process each and merge
+                console.log(`Processing ${chunks.length} chunks for ${totalPages} page PDF...`);
+                const allSections: ParsedSummary['sections'] = [];
+
+                for (let i = 0; i < chunks.length; i++) {
+                    console.log(`Processing chunk ${i + 1} of ${chunks.length}...`);
+                    const chunkResult = await processPdfChunk(chunks[i], i, chunks.length, length);
+                    allSections.push(...chunkResult.sections);
+                }
+
+                parsed = { sections: allSections };
+                console.log(`Merged ${allSections.length} sections from ${chunks.length} chunks`);
+            }
         } else if (fileData.plainText || fileData.textContent) {
             // For DOCX, TXT, PPTX - use plain text for Gemini (not HTML)
             const textForGemini = fileData.plainText || fileData.textContent;
-            contents.push({ text: `\n\nDocument content:\n---\n${textForGemini}\n---` });
+            console.log('Processing text document...');
+
+            const response = await genAI.models.generateContent({
+                model: 'gemini-2.5-flash',
+                contents: [
+                    { text: prompt },
+                    { text: `\n\nDocument content:\n---\n${textForGemini}\n---` }
+                ],
+                config: {
+                    responseMimeType: 'application/json',
+                    responseSchema: summaryResponseSchema,
+                },
+            });
+
+            if (!response?.text) {
+                throw new Error('No response from Gemini API');
+            }
+            parsed = JSON.parse(response.text);
         } else {
             throw new Error('No content available for summarization');
         }
 
-        // Use gemini-2.5-flash for better free tier limits
-        const response = await genAI.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: contents,
-            config: {
-                responseMimeType: 'application/json',
-                responseSchema: summaryResponseSchema,
-            },
-        });
-
-        const responseText = response.text;
-
-        if (!responseText) {
-            throw new Error('Invalid response from Gemini API');
-        }
-
-        // Parse the structured JSON response
-        const parsed: ParsedSummary = JSON.parse(responseText);
+        console.log('Gemini API response received');
 
         // Convert to our Summary format
         const sections: SummarySection[] = [];
@@ -263,9 +416,27 @@ Section types:
             content: sections,
             highlights,
         };
-    } catch (error) {
+    } catch (error: unknown) {
         console.error('Gemini API error:', error);
-        throw error;
+        
+        // Try to extract the message from Gemini API error response
+        const errorObj = error as { message?: string };
+        const errorMessage = errorObj?.message || String(error);
+        
+        // Try to parse JSON error message from API
+        try {
+            const jsonMatch = errorMessage.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                if (parsed?.error?.message) {
+                    throw new Error(parsed.error.message);
+                }
+            }
+        } catch {
+            // Not JSON, use original message
+        }
+        
+        throw new Error(errorMessage);
     }
 }
 
@@ -283,11 +454,10 @@ export async function processFileForGemini(file: File): Promise<{
     const base64 = await fileToBase64(file);
     const fileType = file.name.split('.').pop()?.toLowerCase();
 
-    // For PDF files, we use the native PDF viewer - no text extraction needed for display
+    // For PDF files, Gemini can read them natively via inlineData
+    // No text extraction needed - the PDF is sent directly to Gemini
     if (fileType === 'pdf') {
-        // Extract text for Gemini summarization (used when sending to API)
-        const plainText = await parsePdfFile(file);
-        return { base64, mimeType, textContent: '', plainText, contentType: 'pdf' };
+        return { base64, mimeType, textContent: '', plainText: '', contentType: 'pdf' };
     }
 
     // For text files, get plain text
@@ -318,50 +488,12 @@ async function extractTextForDisplay(file: File): Promise<string> {
         return await file.text();
     }
 
-    if (fileType === 'pdf') {
-        return await parsePdfFile(file);
-    }
-
     if (fileType === 'docx') {
         return await parseDocxFile(file);
     }
 
     // For unsupported types, return a placeholder
     return `[Document: ${file.name}]\n\nThis document type is being processed by Gemini AI for summarization.`;
-}
-
-/**
- * Parse PDF file to text using pdf.js (for display purposes)
- */
-async function parsePdfFile(file: File): Promise<string> {
-    try {
-        const pdfjsLib = await import('pdfjs-dist');
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-
-        const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-
-        let fullText = '';
-
-        for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const textContent = await page.getTextContent();
-            const pageText = textContent.items
-                .map((item) => {
-                    if ('str' in item) {
-                        return (item as { str: string }).str;
-                    }
-                    return '';
-                })
-                .join(' ');
-            fullText += pageText + '\n\n';
-        }
-
-        return fullText || `[PDF Document: ${file.name}]`;
-    } catch (error) {
-        console.error('PDF parsing error:', error);
-        return `[PDF Document: ${file.name}]\n\nUnable to extract text preview. The document will still be processed by Gemini AI.`;
-    }
 }
 
 /**

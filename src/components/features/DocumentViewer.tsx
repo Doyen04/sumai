@@ -263,29 +263,29 @@ export const DocumentViewer = forwardRef<HTMLDivElement, DocumentViewerProps>(
             );
         }
 
-        // For PDF, render using object tag with blob URL
-        if (contentType === 'pdf' && pdfBlobUrl) {
+        // For PDF, render using iframe with blob URL
+        if (contentType === 'pdf') {
+            if (pdfBlobUrl) {
+                return (
+                    <div className={cn('flex flex-col h-full', className)}>
+                        <iframe
+                            src={`${pdfBlobUrl}#toolbar=1&navpanes=1&scrollbar=1`}
+                            className="w-full h-full border-0"
+                            title="PDF Document"
+                        />
+                    </div>
+                );
+            }
+            
+            // PDF blob URL failed - show error
             return (
-                <div className={cn('flex flex-col h-full', className)}>
-                    <object
-                        data={pdfBlobUrl}
-                        type="application/pdf"
-                        className="w-full h-full"
-                        title="PDF Document"
-                    >
-                        <div className="flex flex-col items-center justify-center h-full p-8 text-center">
-                            <p className="text-muted mb-4">
-                                Unable to display PDF in browser.
-                            </p>
-                            <a
-                                href={pdfBlobUrl}
-                                download="document.pdf"
-                                className="text-accent hover:underline"
-                            >
-                                Download PDF
-                            </a>
-                        </div>
-                    </object>
+                <div className={cn('flex flex-col h-full items-center justify-center p-8', className)}>
+                    <div className="text-center">
+                        <p className="text-foreground font-medium mb-2">Unable to load PDF</p>
+                        <p className="text-muted text-sm">
+                            There was an error loading the PDF viewer. The summary will still be generated.
+                        </p>
+                    </div>
                 </div>
             );
         }
