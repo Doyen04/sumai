@@ -213,8 +213,31 @@ Section types:
         config: {
             responseMimeType: 'application/json',
             responseSchema: summaryResponseSchema,
+            maxOutputTokens: 8192,
         },
     });
+
+    // Check if response was truncated
+    const finishReason = response.candidates?.[0]?.finishReason;
+    if (finishReason === 'MAX_TOKENS') {
+        console.warn(`Chunk ${chunkIndex + 1} response was truncated, retrying with fewer points...`);
+        // Retry with request for fewer points
+        const retryResponse = await genAI.models.generateContent({
+            model: 'gemini-2.5-flash',
+            contents: [
+                { text: prompt.replace(/\d+-\d+ key points/, '5-8 key points') + '\n\nKEEP RESPONSE SHORT.' },
+                { inlineData: { mimeType: 'application/pdf', data: base64Chunk } }
+            ],
+            config: {
+                responseMimeType: 'application/json',
+                responseSchema: summaryResponseSchema,
+                maxOutputTokens: 8192,
+            },
+        });
+        if (retryResponse?.text) {
+            return JSON.parse(retryResponse.text) as ParsedSummary;
+        }
+    }
 
     if (!response?.text) {
         throw new Error(`No response for chunk ${chunkIndex + 1}`);
@@ -321,8 +344,15 @@ Section types:
                     config: {
                         responseMimeType: 'application/json',
                         responseSchema: summaryResponseSchema,
+                        maxOutputTokens: 8192,
                     },
                 });
+
+                // Check if response was truncated
+                const finishReason = response.candidates?.[0]?.finishReason;
+                if (finishReason === 'MAX_TOKENS') {
+                    throw new Error('Response was truncated. Try using "Short" summary length or a smaller document.');
+                }
 
                 if (!response?.text) {
                     throw new Error('No response from Gemini API');
@@ -356,8 +386,15 @@ Section types:
                 config: {
                     responseMimeType: 'application/json',
                     responseSchema: summaryResponseSchema,
+                    maxOutputTokens: 8192,
                 },
             });
+
+            // Check if response was truncated
+            const finishReason = response.candidates?.[0]?.finishReason;
+            if (finishReason === 'MAX_TOKENS') {
+                throw new Error('Response was truncated. Try using "Short" summary length or a smaller document.');
+            }
 
             if (!response?.text) {
                 throw new Error('No response from Gemini API');

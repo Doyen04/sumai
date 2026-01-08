@@ -105,8 +105,8 @@ export function DocumentViewPage() {
 
         setSummaryLength(length);
 
-        // Regenerate summary with new length
-        if (id && document?.content) {
+        // Regenerate summary with new length (check for content OR pdfData for PDFs)
+        if (id && (document?.content || document?.pdfData)) {
             try {
                 setIsRegenerating(true);
                 setError(null);
